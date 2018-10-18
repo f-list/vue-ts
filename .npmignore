@@ -1,0 +1,4 @@
+transform.ts
+!transform.js
+!transform.d.ts
+tsconfig.json
