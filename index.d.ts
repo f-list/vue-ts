@@ -1,7 +1,7 @@
-import Vue, {ComponentOptions, PropOptions, WatchOptions, VueConstructor} from 'vue';
-
-export declare function Component(options: ComponentOptions<Vue>): <V extends VueConstructor>(target: V) => V;
-export declare function Component<V extends VueConstructor>(target: V): V;
+import Vue, {ComponentOptions, PropOptions, WatchOptions} from 'vue';
+type Constructor<T> = Function & { prototype: T }
+export declare function Component(options: ComponentOptions<Vue>): <V extends Constructor<Vue>>(target: V) => V;
+export declare function Component<V extends Constructor<Vue>>(target: V): V;
 
 declare const Prop: PropertyDecorator & ((options?: PropOptions) => PropertyDecorator);
 

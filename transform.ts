@@ -1,11 +1,11 @@
 import * as ts from 'typescript';
 
 function getDecoratorName(decorator: ts.Decorator) {
-    return decorator.expression.kind == ts.SyntaxKind.CallExpression ? (<ts.CallExpression>decorator.expression).expression.getText(decorator.getSourceFile()) : decorator.expression.getText(decorator.getSourceFile());
+    return ts.isCallExpression(decorator.expression) ? decorator.expression.expression.getText(decorator.getSourceFile()) : decorator.expression.getText(decorator.getSourceFile());
 }
 
 function getDecoratorArgument(decorator: ts.Decorator, index: number) {
-    return decorator.expression.kind == ts.SyntaxKind.CallExpression ? (<ts.CallExpression>decorator.expression).arguments[index] : undefined;
+    return ts.isCallExpression(decorator.expression) ? decorator.expression.arguments[index] : undefined;
 }
 
 function createProperty(object: ts.ObjectLiteralExpression, expr: ts.ObjectLiteralElementLike) {
@@ -13,7 +13,7 @@ function createProperty(object: ts.ObjectLiteralExpression, expr: ts.ObjectLiter
 }
 
 function copyIfObject(object: ts.Node | undefined) {
-    return ts.createObjectLiteral(object && object.kind == ts.SyntaxKind.ObjectLiteralExpression ? (<ts.ObjectLiteralExpression>object).properties : undefined);
+    return ts.createObjectLiteral(object && ts.isObjectLiteralExpression(object) ? object.properties : undefined);
 }
 
 const transformer: ts.TransformerFactory<ts.SourceFile> = (context) => {
@@ -21,7 +21,7 @@ const transformer: ts.TransformerFactory<ts.SourceFile> = (context) => {
         const decorator = node.decorators && node.decorators.filter(x => getDecoratorName(x) === 'Component')[0];
         if(decorator) {
             const data = copyIfObject(getDecoratorArgument(decorator, 0));
-            const computed: {[key: string]: {get?: ts.Block, set?: ts.Block}} = {}, watch: {[key: string]: ts.ObjectLiteralExpression[]} = {}, hooks: {[key: string]: ts.Expression[]} = {};
+            const computed: {[key: string]: {get?: ts.AccessorDeclaration, set?: ts.AccessorDeclaration}} = {}, watch: {[key: string]: ts.ObjectLiteralExpression[]} = {}, hooks: {[key: string]: ts.Expression[]} = {};
             const methods = ts.createObjectLiteral(), props = ts.createObjectLiteral();
             createProperty(data, ts.createPropertyAssignment('methods', methods));
             createProperty(data, ts.createPropertyAssignment('props', props));
@@ -29,41 +29,38 @@ const transformer: ts.TransformerFactory<ts.SourceFile> = (context) => {
             createProperty(data, ts.createMethod(undefined, undefined, undefined, 'data', undefined, undefined, [], undefined, ts.createBlock([ts.createReturn(dataObj)])));
             const cls = <ts.ClassDeclaration>node;
             for(const member of cls.members) {
-                if(member.kind === ts.SyntaxKind.GetAccessor || member.kind === ts.SyntaxKind.SetAccessor) {
-                    const accessor = <ts.AccessorDeclaration>member;
-                    const entry = computed[accessor.name.getText()] || (computed[accessor.name.getText()] = {});
-                    entry[member.kind === ts.SyntaxKind.GetAccessor ? 'get' : 'set'] = accessor.body;
-                } else if(member.kind === ts.SyntaxKind.PropertyDeclaration) {
-                    const property = <ts.PropertyDeclaration>member;
+                if(member.modifiers && member.modifiers.some(x => x.kind === ts.SyntaxKind.AbstractKeyword)) continue;
+                if(ts.isAccessor(member)) {
+                    const entry = computed[member.name!.getText()] || (computed[member.name!.getText()] = {});
+                    entry[ts.isGetAccessor(member) ? 'get' : 'set'] = member;
+                } else if(ts.isPropertyDeclaration(member)) {
                     const prop = member.decorators && member.decorators.filter(x => getDecoratorName(x) === 'Prop')[0];
                     if(prop) {
                         const propData = copyIfObject(getDecoratorArgument(prop, 0));
                         //if(property.type)
                         //    createProperty(propData, ts.createPropertyAssignment('type', ts.createIdentifier(property.type.getText())));
-                        createProperty(props, ts.createPropertyAssignment(property.name, propData));
+                        createProperty(props, ts.createPropertyAssignment(member.name, propData));
                         continue;
                     }
-                    if(property.name.getText().startsWith('$')) continue;
-                    createProperty(dataObj, ts.createPropertyAssignment(property.name, (<ts.PropertyDeclaration>member).initializer || ts.createIdentifier('undefined')))
-                } else if(member.kind === ts.SyntaxKind.MethodDeclaration) {
-                    const method = <ts.MethodDeclaration>member;
-                    createProperty(methods, method);
+                    if(member.name.getText().startsWith('$')) continue;
+                    createProperty(dataObj, ts.createPropertyAssignment(member.name, (<ts.PropertyDeclaration>member).initializer || ts.createIdentifier('undefined')))
+                } else if(ts.isMethodDeclaration(member)) {
+                    createProperty(methods, member);
                     const hook = member.decorators && member.decorators.filter(x => getDecoratorName(x) === 'Hook')[0];
                     if(hook) {
                         const name = (<ts.StringLiteral>getDecoratorArgument(hook, 0)).text;
                         const entry = hooks[name] || (hooks[name] = []);
-                        entry.push(method.name.kind === ts.SyntaxKind.StringLiteral || method.name.kind === ts.SyntaxKind.NumericLiteral ? method.name :
-                            method.name.kind === ts.SyntaxKind.Identifier ? ts.createLiteral(method.name) : method.name.expression);
+                        entry.push(ts.isLiteralExpression(member.name) ? member.name : ts.isIdentifier(member.name) ? ts.createLiteral(member.name) : member.name.expression);
                     }
                     const watchDecorator = member.decorators && member.decorators.filter(x => getDecoratorName(x) === 'Watch')[0];
                     if(watchDecorator) {
                         const watchData = copyIfObject(getDecoratorArgument(watchDecorator, 1));
-                        createProperty(watchData, ts.createPropertyAssignment(ts.createIdentifier('handler'), ts.createStringLiteral(method.name.getText())))
+                        createProperty(watchData, ts.createPropertyAssignment(ts.createIdentifier('handler'), ts.createStringLiteral(member.name.getText())))
                         const name = (<ts.StringLiteral>getDecoratorArgument(watchDecorator, 0)).text;
                         const entry = watch[name] || (watch[name] = []);
                         entry.push(watchData);
                     }
-                    method.decorators = undefined;
+                    member.decorators = undefined;
                 }
             }
 
@@ -74,19 +71,23 @@ const transformer: ts.TransformerFactory<ts.SourceFile> = (context) => {
             }
             createIfAny(computed, 'computed', (key, value) => {
                 if(!value.get) throw new Error("No getter defined for " + key);
-                const prop = ts.createObjectLiteral([ts.createMethod(undefined, undefined, undefined, 'get', undefined, undefined, [], undefined, value.get)]);
+                const prop = ts.createObjectLiteral([ts.createMethod(undefined, undefined, undefined, 'get', undefined, undefined, [], undefined, value.get.body)]);
                 if(value.set)
-                    createProperty(prop, ts.createMethod(undefined, undefined, undefined, 'set', undefined, undefined, [], undefined, value.set))
+                    createProperty(prop, ts.createMethod(undefined, undefined, undefined, 'set', undefined, undefined, value.set.parameters, undefined, value.set.body))
                 return prop;
             })
             createIfAny(watch, 'watch', (_, value) => ts.createArrayLiteral(value));
             for(const hook in hooks) {
-                const block = ts.createBlock(hooks[hook].map(x => ts.createExpressionStatement(ts.createCall(ts.createElementAccess(ts.createThis(), x), undefined, undefined))))
-                createProperty(data, ts.createMethod(undefined, undefined, undefined, hook, undefined, undefined, [], undefined, block));
+                const block = hooks[hook].map(x => ts.createExpressionStatement(ts.createCall(ts.createPropertyAccess(ts.createElementAccess(ts.createThis(), x), 'apply'), undefined, [ts.createThis(), ts.createIdentifier('arguments')])))
+                createProperty(data, ts.createMethod(undefined, undefined, undefined, hook, undefined, undefined, [], undefined, ts.createBlock(block)));
             }
 
             const base = cls.heritageClauses!.filter(x => x.token == ts.SyntaxKind.ExtendsKeyword)[0].types[0];
-            return ts.createExportDefault(ts.createCall(ts.createPropertyAccess(base.expression, ts.createIdentifier('extend')), undefined, [data]));
+            return [
+                ts.createVariableStatement([ts.createModifier(ts.SyntaxKind.ConstKeyword)],
+                    [ts.createVariableDeclaration(cls.name!, undefined, ts.createCall(ts.createPropertyAccess(base.expression, ts.createIdentifier('extend')), undefined, [data]))]),
+                ts.createExportDefault(cls.name!)
+            ];
         }
         return node
     };

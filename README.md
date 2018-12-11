@@ -13,8 +13,15 @@ It is mostly intended for internal usage, and will not necessarily respect SemVe
 In any class marked with `@Component`:
  - Property declarations will be added to `data`. Properties without an initializer will be initialized to `undefined`.
  - Method declarations not marked with `@Hook` will be added to `methods`.
- - Get accessor declarations will be added to `computed`.
+ - Get and set accessor declarations will be added to `computed`. The existence of a set accessor without a corresponding get accessor is treated as an error.
 
 The TypeScript transformer can be imported using `const vueTransformer = require('@f-list/vue-ts/transform').default;`.
 
 It can then be added to ts-loader using the `getCustomTransformers: () => ({before: [vueTransformer]})` option.
+
+## Important Notes
+For any configuration that is handled by the transformer, make sure to only use literals rather than references.
+
+While technically syntactically correct and not detected as an error by TypeScript, the transformer is not able to resolve such references, and the resulting behaviour is undefined.
+
+Specifically, this currently applies to the first parameter of every decorator.
