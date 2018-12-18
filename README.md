@@ -21,7 +21,7 @@ It can then be added to ts-loader using the `getCustomTransformers: () => ({befo
 
 ## Important Notes
 For any configuration that is handled by the transformer, make sure to only use literals rather than references.
-
 While technically syntactically correct and not detected as an error by TypeScript, the transformer is not able to resolve such references, and the resulting behaviour is undefined.
-
 Specifically, this currently applies to the first parameter of every decorator.
+
+The `super` keyword is only allowed for base method references. The occurrence outside of the expression of a call is treated as an error.

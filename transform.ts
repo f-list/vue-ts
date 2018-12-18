@@ -28,6 +28,7 @@ const transformer: ts.TransformerFactory<ts.SourceFile> = (context) => {
             const dataObj = ts.createObjectLiteral();
             createProperty(data, ts.createMethod(undefined, undefined, undefined, 'data', undefined, undefined, [], undefined, ts.createBlock([ts.createReturn(dataObj)])));
             const cls = <ts.ClassDeclaration>node;
+            const base = cls.heritageClauses!.filter(x => x.token == ts.SyntaxKind.ExtendsKeyword)[0].types[0];
             for(const member of cls.members) {
                 if(member.modifiers && member.modifiers.some(x => x.kind === ts.SyntaxKind.AbstractKeyword)) continue;
                 if(ts.isAccessor(member)) {
@@ -45,6 +46,19 @@ const transformer: ts.TransformerFactory<ts.SourceFile> = (context) => {
                     if(member.name.getText().startsWith('$')) continue;
                     createProperty(dataObj, ts.createPropertyAssignment(member.name, (<ts.PropertyDeclaration>member).initializer || ts.createIdentifier('undefined')))
                 } else if(ts.isMethodDeclaration(member)) {
+                    function replaceIfSuper(node: ts.Node) {
+                        if((ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node)) && node.expression.kind === ts.SyntaxKind.SuperKeyword) {
+                            let parent = node.parent;
+                            while(!ts.isCallExpression(parent)) {
+                                if(parent === member) throw new Error('The super keyword is only supported in call expressions.');
+                                parent = node.parent;
+                            }
+                            node.expression = ts.createPropertyAccess(ts.createPropertyAccess(base.expression, 'options'), 'methods');
+                            parent.expression = ts.createPropertyAccess(node, 'call');
+                            (<ts.Expression[]><unknown>parent.arguments).unshift(ts.createThis());
+                        } else ts.forEachChild(node, replaceIfSuper);
+                    }
+                    ts.forEachChild(member, replaceIfSuper);
                     createProperty(methods, member);
                     const hook = member.decorators && member.decorators.filter(x => getDecoratorName(x) === 'Hook')[0];
                     if(hook) {
@@ -82,7 +96,6 @@ const transformer: ts.TransformerFactory<ts.SourceFile> = (context) => {
                 createProperty(data, ts.createMethod(undefined, undefined, undefined, hook, undefined, undefined, [], undefined, ts.createBlock(block)));
             }
 
-            const base = cls.heritageClauses!.filter(x => x.token == ts.SyntaxKind.ExtendsKeyword)[0].types[0];
             return [
                 ts.createVariableStatement([ts.createModifier(ts.SyntaxKind.ConstKeyword)],
                     [ts.createVariableDeclaration(cls.name!, undefined, ts.createCall(ts.createPropertyAccess(base.expression, ts.createIdentifier('extend')), undefined, [data]))]),
