@@ -30,12 +30,13 @@ const transformer: ts.TransformerFactory<ts.SourceFile> = (context) => {
             const cls = <ts.ClassDeclaration>node;
             const base = cls.heritageClauses!.filter(x => x.token == ts.SyntaxKind.ExtendsKeyword)[0].types[0];
             for(const member of cls.members) {
+                if(!member.decorators) member.decorators = ts.createNodeArray();
                 if(member.modifiers && member.modifiers.some(x => x.kind === ts.SyntaxKind.AbstractKeyword)) continue;
                 if(ts.isAccessor(member)) {
                     const entry = computed[member.name!.getText()] || (computed[member.name!.getText()] = {});
                     entry[ts.isGetAccessor(member) ? 'get' : 'set'] = member;
                 } else if(ts.isPropertyDeclaration(member)) {
-                    const prop = member.decorators && member.decorators.filter(x => getDecoratorName(x) === 'Prop')[0];
+                    const prop = member.decorators!.filter(x => getDecoratorName(x) === 'Prop')[0];
                     if(prop) {
                         const propData = copyIfObject(getDecoratorArgument(prop, 0));
                         //if(property.type)
@@ -48,26 +49,23 @@ const transformer: ts.TransformerFactory<ts.SourceFile> = (context) => {
                 } else if(ts.isMethodDeclaration(member)) {
                     function replaceIfSuper(node: ts.Node) {
                         if((ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node)) && node.expression.kind === ts.SyntaxKind.SuperKeyword) {
-                            let parent = node.parent;
-                            while(!ts.isCallExpression(parent)) {
-                                if(parent === member) throw new Error('The super keyword is only supported in call expressions.');
-                                parent = node.parent;
-                            }
+                            if(!ts.isCallExpression(node.parent))
+                                throw new Error('The super keyword is only supported in call expressions.');
                             node.expression = ts.createPropertyAccess(ts.createPropertyAccess(base.expression, 'options'), 'methods');
-                            parent.expression = ts.createPropertyAccess(node, 'call');
-                            (<ts.Expression[]><unknown>parent.arguments).unshift(ts.createThis());
+                            node.parent.expression = ts.createPropertyAccess(node, 'call');
+                            (<ts.Expression[]><unknown>node.parent.arguments).unshift(ts.createThis());
                         } else ts.forEachChild(node, replaceIfSuper);
                     }
                     ts.forEachChild(member, replaceIfSuper);
                     createProperty(methods, member);
-                    const hook = member.decorators && member.decorators.filter(x => getDecoratorName(x) === 'Hook')[0];
-                    if(hook) {
+                    const hookDecorators = member.decorators!.filter(x => getDecoratorName(x) === 'Hook');
+                    for(const hook of hookDecorators) {
                         const name = (<ts.StringLiteral>getDecoratorArgument(hook, 0)).text;
                         const entry = hooks[name] || (hooks[name] = []);
                         entry.push(ts.isLiteralExpression(member.name) ? member.name : ts.isIdentifier(member.name) ? ts.createLiteral(member.name) : member.name.expression);
                     }
-                    const watchDecorator = member.decorators && member.decorators.filter(x => getDecoratorName(x) === 'Watch')[0];
-                    if(watchDecorator) {
+                    const watches = member.decorators!.filter(x => getDecoratorName(x) === 'Watch');
+                    for(const watchDecorator of watches) {
                         const watchData = copyIfObject(getDecoratorArgument(watchDecorator, 1));
                         createProperty(watchData, ts.createPropertyAssignment(ts.createIdentifier('handler'), ts.createStringLiteral(member.name.getText())))
                         const name = (<ts.StringLiteral>getDecoratorArgument(watchDecorator, 0)).text;

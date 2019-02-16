@@ -7,6 +7,6 @@ declare const Prop: PropertyDecorator & ((options?: PropOptions) => PropertyDeco
 
 export declare function Watch(expression: string, options?: WatchOptions): MethodDecorator;
 
-export declare function Hook(name: 'beforeCreate' | 'created' | 'beforeMount' | 'mounted' | 'beforeDestroy' | 'destroyed' | 'beforeUpdate' | 'updated' | 'activated' | 'deactivated' | 'render' | 'errorCaptured'): MethodDecorator;
+export declare function Hook(name: 'beforeCreate' | 'created' | 'beforeMount' | 'mounted' | 'beforeDestroy' | 'destroyed' | 'beforeUpdate' | 'updated' | 'activated' | 'deactivated'): MethodDecorator;
 
 export {Prop}

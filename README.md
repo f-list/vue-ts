@@ -11,7 +11,7 @@ It is mostly intended for internal usage, and will not necessarily respect SemVe
  - `@Hook` for methods, accepting the name of a lifecycle function. These will be called in the respective lifecycle hooks.
 
 In any class marked with `@Component`:
- - Property declarations will be added to `data`. Properties without an initializer will be initialized to `undefined`.
+ - Property declarations not marked with `@Prop` will be added to `data`. Properties without an initializer will be initialized to `undefined`.
  - Method declarations not marked with `@Hook` will be added to `methods`.
  - Get and set accessor declarations will be added to `computed`. The existence of a set accessor without a corresponding get accessor is treated as an error.
 
@@ -20,8 +20,7 @@ The TypeScript transformer can be imported using `const vueTransformer = require
 It can then be added to ts-loader using the `getCustomTransformers: () => ({before: [vueTransformer]})` option.
 
 ## Important Notes
-For any configuration that is handled by the transformer, make sure to only use literals rather than references.
+For any decorator parameters, make sure to only use literals rather than references.
 While technically syntactically correct and not detected as an error by TypeScript, the transformer is not able to resolve such references, and the resulting behaviour is undefined.
-Specifically, this currently applies to the first parameter of every decorator.
 
 The `super` keyword is only allowed for base method references. The occurrence outside of the expression of a call is treated as an error.
