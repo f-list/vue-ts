@@ -36,7 +36,7 @@ const transformer: ts.TransformerFactory<ts.SourceFile> = (context) => {
 					if((ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node)) && node.expression.kind === ts.SyntaxKind.SuperKeyword) {
 						if(!ts.isCallExpression(node.parent))
 							throw new Error('The super keyword is only supported in call expressions.');
-						node.expression = ts.createPropertyAccess(ts.createPropertyAccess(base.expression, 'options'), 'methods');
+						node.expression = ts.createPropertyAccess(base.expression, 'methods');
 						node.parent.expression = ts.createPropertyAccess(node, 'call');
 						(<ts.Expression[]><unknown>node.parent.arguments).unshift(ts.createThis());
 					} else ts.forEachChild(node, replaceIfSuper);
