@@ -95,10 +95,14 @@ const transformer: ts.TransformerFactory<ts.SourceFile> = (context) => {
 		if(data.length)
 			options.push(f.createMethodDeclaration(undefined, undefined, undefined, 'data', undefined, undefined, [], undefined, f.createBlock([f.createReturnStatement(f.createObjectLiteralExpression(data))])));
 
-		return [
-			f.createVariableStatement([f.createModifier(ts.SyntaxKind.ConstKeyword)], [f.createVariableDeclaration(cls.name!, undefined, undefined, f.createObjectLiteralExpression(options))]),
-			f.createExportDefault(cls.name!)
-		];
+		const def = f.createVariableStatement([f.createModifier(ts.SyntaxKind.ConstKeyword)], [f.createVariableDeclaration(cls.name!, undefined, undefined, f.createObjectLiteralExpression(options))]);
+		if(cls.modifiers?.some(x => x.kind === ts.SyntaxKind.ExportKeyword))
+			if(cls.modifiers?.some(x => x.kind === ts.SyntaxKind.DefaultKeyword))
+				return [def, f.createExportDefault(cls.name!)];
+			else
+				return [def, f.createExportDeclaration(undefined, undefined, false, f.createNamedExports([f.createExportSpecifier(undefined, cls.name!)]))];
+		else
+			return def;
 	};
 
 	return (node) => ts.visitEachChild(node, visitor, context);
