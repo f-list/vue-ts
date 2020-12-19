@@ -1,6 +1,6 @@
 {
   "name": "@f-list/vue-ts",
-  "version": "2.0.2",
+  "version": "2.0.3",
   "description": "F-List Helper library for precompiling Vue class components",
   "main": "index.js",
   "repository": "https://www.github.com/f-list/vue-ts",

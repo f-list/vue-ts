@@ -32,32 +32,33 @@ const transformer: ts.TransformerFactory<ts.SourceFile> = (context) => {
 				else
 					data.push(f.createPropertyAssignment(member.name, member.initializer || f.createIdentifier('undefined')));
 			} else if(ts.isMethodDeclaration(member)) {
-				function replaceIfSuper(node: ts.Node) {
-					if((ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node)) && node.expression.kind === ts.SyntaxKind.SuperKeyword) {
-						if(!ts.isCallExpression(node.parent))
-							throw new Error('The super keyword is only supported in call expressions.');
-						node.expression = ts.createPropertyAccess(base.expression, 'methods');
-						node.parent.expression = ts.createPropertyAccess(node, 'call');
-						(<ts.Expression[]><unknown>node.parent.arguments).unshift(ts.createThis());
-					} else ts.forEachChild(node, replaceIfSuper);
+				function replaceIfSuper(node: ts.Node): ts.Node {
+					if(ts.isCallExpression(node) && (ts.isPropertyAccessExpression(node.expression) || ts.isElementAccessExpression(node.expression))
+							&& node.expression.expression.kind === ts.SyntaxKind.SuperKeyword) {
+						const methods = f.createPropertyAccessExpression(base.expression, 'methods');
+						const access = ts.isPropertyAccessExpression(node.expression) ? f.createPropertyAccessExpression(methods, node.expression.name) : f.createElementAccessExpression(methods, node.expression.argumentExpression);
+						node = f.createCallExpression(f.createPropertyAccessExpression(access, 'call'), node.typeArguments, [f.createThis(), ...node.arguments]);
+					}
+					return ts.visitEachChild(node, replaceIfSuper, context);
 				}
 
-				ts.forEachChild(member, replaceIfSuper);
-				methods.push(member);
-				const hookDecorators = member.decorators?.filter(x => getDecoratorName(x) === 'Hook');
+				const method = ts.visitEachChild(member, replaceIfSuper, context);
+				methods.push(method);
+				const hookDecorators = method.decorators?.filter(x => getDecoratorName(x) === 'Hook');
 				for(const hook of hookDecorators || []) {
 					const name = (<ts.StringLiteral>getDecoratorArgument(hook, 0)).text;
 					const entry = (hooks[name] ??= []);
-					entry.push(ts.isLiteralExpression(member.name) ? member.name : ts.isIdentifier(member.name) ? ts.createLiteral(member.name) : member.name.expression);
+					entry.push(ts.isPrivateIdentifier(method.name) || ts.isIdentifier(method.name) ? f.createPropertyAccessExpression(f.createThis(), method.name) :
+						f.createElementAccessExpression(f.createThis(), ts.isComputedPropertyName(method.name) ? method.name.expression : method.name));
 				}
-				const watches = member.decorators?.filter(x => getDecoratorName(x) === 'Watch');
+				const watches = method.decorators?.filter(x => getDecoratorName(x) === 'Watch');
 				for(const watchDecorator of watches || []) {
 					const existing = (getDecoratorArgument(watchDecorator, 1) as ObjectLiteralExpression)?.properties || [];
-					const data = f.createObjectLiteralExpression([...existing, f.createPropertyAssignment(f.createIdentifier('handler'), f.createStringLiteral(member.name.getText()))]);
+					const data = f.createObjectLiteralExpression([...existing, f.createPropertyAssignment(f.createIdentifier('handler'), f.createStringLiteral(method.name.getText()))]);
 					const name = (<ts.StringLiteral>getDecoratorArgument(watchDecorator, 0)).text;
 					(watch[name] ??= []).push(data);
 				}
-				member.decorators = undefined;
+				method.decorators = undefined;
 			}
 		}
 
@@ -86,7 +87,7 @@ const transformer: ts.TransformerFactory<ts.SourceFile> = (context) => {
 		});
 		createIfAny(watch, 'watch', (_, value) => f.createArrayLiteralExpression(value));
 		for(const hook in hooks) {
-			const block = hooks[hook].map(x => f.createExpressionStatement(f.createCallExpression(f.createPropertyAccessExpression(f.createElementAccessExpression(f.createThis(), x), 'apply'),
+			const block = hooks[hook].map(x => f.createExpressionStatement(f.createCallExpression(f.createPropertyAccessExpression(x, 'apply'),
 				undefined, [f.createThis(), f.createIdentifier('arguments')])));
 			options.push(f.createMethodDeclaration(undefined, undefined, undefined, hook, undefined, undefined, [], undefined, f.createBlock(block)));
 		}
